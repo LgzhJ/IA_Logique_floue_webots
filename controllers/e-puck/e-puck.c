@@ -30,33 +30,61 @@
 #define AXLE_LENGTH 0.052
 #define RANGE (1024 / 2)
 
+/* 1 : longe le mur à droite (ps1, ps2, ps3, ps6), 0 : longe le mur à gauche (ps1, ps4, ps5, ps6) */
+const int MUR_A_DROITE = 1;
+
+
 typedef struct {
   double a, b, c, d;
-}Trapeze;
+} Trapeze;
 
-/* Distance*/
-Trapeze loin = {0.0, 0.0, 100.0, 300.0};
-Trapeze moyen = {200.0, 300.0, 300.0, 400.0};
-Trapeze proche = {300.0, 500.0, 4095.0, 4095.0};
+/* Entrée 1 : distance frontale = max(ps1, ps6)*/
+/*
+Trapeze avant_loin = {0.0, 0.0, 150.0, 210.0};
+Trapeze avant_proche = {220.0, 280.0, 4095.0, 4095.0};
+*/
+Trapeze avant_loin = {0.0, 0.0, 90.0, 160.0};
+Trapeze avant_proche = {160.0, 200.0, 4095.0, 4095.0};
 
-/* Orientation*/
-Trapeze gauche = {-90.0, -90.0, -45.0, 0.0};
-Trapeze tout_droit = {-45.0, 0.0, 0.0, 45.0};
-Trapeze droite = {0.0, 45.0, 90.0, 90.0};
+/* Entrée 2 : distance latérale au mur suivi (ps2 ou ps5)*/
+/*
+Trapeze cote_loin = {0.0, 0.0, 150.0, 190.0};
+Trapeze cote_moyen = {180.0, 280.0, 380.0, 460.0};
+Trapeze cote_proche = {380.0, 580.0, 4095.0, 4095.0};
+*/
+Trapeze cote_loin = {0.0, 0.0, 90.0, 130.0};
+Trapeze cote_moyen = {120.0, 200.0, 300.0, 380.0};
+Trapeze cote_proche = {300.0, 500.0, 4095.0, 4095.0};
 
-/* Vitesse*/
-Trapeze lent = {0.0, 0.0, 0.05, 0.075};
-Trapeze moderee = {0.0625, 0.075, 0.075, 0.0875};
-Trapeze rapide = {0.075, 0.1, 0.15, 0.15};
+/*
+Trapeze cote_loin = {0.0, 0.0, 90.0, 160.0};
+Trapeze cote_moyen = {90.0, 160.0, 300.0, 380.0};
+Trapeze cote_proche = {300.0, 380.0, 4095.0, 4095.0};*/
+
+/* Entrée 3 : orientation du robot par rapport au mur
+ * diff_avant_arriere = max(ps1, ps6) - (ps3 ou ps4)
+ *  diff_avant_arriere > 0 : l'avant du robot pointe VERS le mur 
+ *  diff_avant_arriere < 0 : l'avant du robot s'ÉLOIGNE du mur
+ *  diff_avant_arriere ~= 0 : robot parallèle au mur ou aucun mur autour
+ **/
+Trapeze angle_eloigne = {-4095.0, -4095.0, -90.0, -30.0};
+Trapeze angle_nul = {-90.0, -30.0, 30.0, 80.0};
+Trapeze angle_vers_mur = {30.0, 80.0, 4095.0, 4095.0};
+
+/* Sorties floues (vitesses en m/s)*/
+Trapeze recul = {-0.1, -0.1, -0.05, 0.0};
+Trapeze lent = {0.0, 0.0, 0.03, 0.05};
+Trapeze moderee = {0.05, 0.06, 0.08, 0.09};
+Trapeze rapide = {0.09, 0.12, 0.15, 0.15};
 
 /**
-* Calcule le degré d'appartenance (mu(x)) sur l'une des deux pentes d'un trapèze
-* à l'aide de la fonction affine f(x)=ax+b
-*/
+ * Calcule le degré d'appartenance (mu(x)) dans le cas où x est sur l'une des deux pentes d'un trapèze
+ * à l'aide de la fonction affine f(x)=ax+b
+ */
 double f_fct_affine(Trapeze t, double x) {
   double a, b;
 
-  /* Pente montante : entre t.a et t.b*/
+  /* Pente montante : entre t.a et t.b */
   if (x >= t.a && x < t.b) {
     a = 1.0 / (t.b - t.a);
     b = -a * t.a;
@@ -64,7 +92,7 @@ double f_fct_affine(Trapeze t, double x) {
     return a * x + b;
   }
 
-  /* Pente descendante : entre t.c et t.d*/
+  /* Pente descendante : entre t.c et t.d */
   if (x > t.c && x <= t.d) {
     a = -1.0 / (t.d - t.c);
     b = 1.0 - a * t.c;
@@ -75,99 +103,98 @@ double f_fct_affine(Trapeze t, double x) {
   return 0.0;
 }
 
+/* Calcule le degré d'appartenance mu de x*/
 double f_calcul_mu(Trapeze t, double dist) {
-  /* En dehors du trapèze*/
-  if(dist < t.a || dist > t.d) return 0.0;
-  
-  /* Sur le plateau*/
-  if(dist >= t.b && dist <= t.c) return 1.0;
-  
-  /* Pente montante*/
-  if(dist > t.a && dist < t.b) return f_fct_affine(t, dist);
+  /* En dehors du trapèze */
+  if (dist < t.a || dist > t.d) return 0.0;
 
-  /* Pente descendante*/
-  if(dist > t.c && dist < t.d) return f_fct_affine(t, dist);
+  /* Sur le plateau */
+  if (dist >= t.b && dist <= t.c) return 1.0;
+
+  /* Pente montante */
+  if (dist > t.a && dist < t.b) return f_fct_affine(t, dist);
+
+  /* Pente descendante */
+  if (dist > t.c && dist < t.d) return f_fct_affine(t, dist);
 
   return 0.0;
 }
 
-double f_max_sensors_value(double *tab, int i, int j) {
-  double max=0.0;
-  for(int k=i; k<=j; k++){
-    if(tab[k]>max) {
-      max=tab[k];
-    }
-  }
-  return max;
-}
-
-double f_defuzzification(double mu_lent, double mu_moderee, double mu_rapide) {
-  double v_lent = 0.05;
-  double v_moderee = 0.075;
-  double v_rapide = 0.1;
-  double num = + mu_lent * v_lent
+double f_defuzzification(double mu_recul, double mu_lent, double mu_moderee, double mu_rapide) {
+  double v_recul = -0.05;
+  double v_lent = 0.03;
+  double v_moderee = 0.07;
+  double v_rapide = 0.12;
+  double num = mu_recul * v_recul
+             + mu_lent * v_lent
              + mu_moderee * v_moderee
              + mu_rapide * v_rapide;
-  double den = mu_lent + mu_moderee + mu_rapide;
+  double den = mu_recul + mu_lent + mu_moderee + mu_rapide;
 
   if (den == 0.0) return 0.0;
   return num / den;
 }
 
-void f_moteur_inference(double dg, double dd, double *v_gauche, double *v_droite) {
-  double mu_loin_dg = f_calcul_mu(loin, dg);
-  double mu_moyen_dg = f_calcul_mu(moyen, dg);
-  double mu_proche_dg = f_calcul_mu(proche, dg);
+/**
+* R1 : Si avant proche                                                    ALORS pivoter à gauche  (G recule, D lent)
+* R2 : Si avant loin ET côté proche ET NON(diff_avant_arriere s'éloigne)  ALORS s'écarter du mur  (G modérée, D rapide)
+* R3 : Si avant loin ET côté moyen ET diff_avant_arriere parallèle        ALORS tout droit        (G modérée, D modérée)
+* R4 : Si avant loin ET côté loin ET NON(diff_avant_arriere vers le mur)  ALORS se rapprocher     (G rapide,  D modérée)
+* R5 : Si avant loin ET côté moyen ET diff_avant_arriere vers le mur      ALORS léger à gauche    (G modérée, D rapide)
+* R6 : Si avant loin ET côté moyen ET diff_avant_arriere s'éloigne        ALORS léger à droite    (G rapide,  D modérée)
+* R7 : Si avant loin ET côté proche ET diff_avant_arriere s'éloigne       ALORS tout droit        
+* R8 : Si avant loin ET côté loin ET diff_avant_arriere vers le mur       ALORS tout droit        
+* R9 : Si avant loin ET côté loin ET diff_avant_arriere parallèle         ALORS virage à droite   (G lent, D recul)
+*/
+void f_moteur_inference(double d_avant, double d_cote, double diff_avant_arriere, double *v_gauche, double *v_droite) {
+  double mu_av_loin = f_calcul_mu(avant_loin, d_avant);
+  double mu_av_proche = f_calcul_mu(avant_proche, d_avant);
 
-  double mu_loin_dd = f_calcul_mu(loin, dd);
-  double mu_moyen_dd = f_calcul_mu(moyen, dd);
-  double mu_proche_dd = f_calcul_mu(proche, dd);
+  double mu_c_loin = f_calcul_mu(cote_loin, d_cote);
+  double mu_c_moyen = f_calcul_mu(cote_moyen, d_cote);
+  double mu_c_proche = f_calcul_mu(cote_proche, d_cote);
 
-  /* Activation des 5 règles (NON = 1 - mu, OU = max, ET = min) */
-  double r1 = fmin(mu_proche_dg, 1.0 - mu_proche_dd);
-  double r2 = fmin(mu_proche_dd, 1.0 - mu_proche_dg);
-  double r3 = fmin(mu_loin_dg,   mu_loin_dd);
-  double r4 = fmax(mu_moyen_dg,  mu_moyen_dd);
-  double r5 = fmin(mu_proche_dg, mu_proche_dd);
+  double mu_a_eloigne = f_calcul_mu(angle_eloigne, diff_avant_arriere);
+  double mu_a_parallele = f_calcul_mu(angle_nul, diff_avant_arriere);
+  double mu_a_vers_mur = f_calcul_mu(angle_vers_mur, diff_avant_arriere);
 
-  double r6 = fmin(mu_moyen_dg, mu_loin_dd);
-  double r7 = fmin(mu_loin_dg, mu_moyen_dd);
+  /* Activation des règles */
+  double r1 = mu_av_proche;
+  double r2 = fmin(mu_av_loin, fmin(mu_c_proche, 1.0 - mu_a_eloigne));
+  double r3 = fmin(mu_av_loin, fmin(mu_c_moyen, mu_a_parallele));
+  double r4 = fmin(mu_av_loin, fmin(mu_c_loin, 1.0 - mu_a_vers_mur));
+  double r5 = fmin(mu_av_loin, fmin(mu_c_moyen, mu_a_vers_mur));
+  double r6 = fmin(mu_av_loin, fmin(mu_c_moyen, mu_a_eloigne));
+  double r7 = fmin(mu_av_loin, fmin(mu_c_proche, mu_a_eloigne));
+  double r8 = fmin(mu_av_loin, fmin(mu_c_loin, mu_a_vers_mur));
+  double r9 = fmin(mu_av_loin, fmin(mu_c_loin, mu_a_parallele));
 
   /* Roue gauche */
-  double g_lent = r2;
-  double g_moderee = fmax(r4, r5);
-  double g_rapide = fmax(r1, r3);
+  double g_recul = r1;
+  double g_lent = r9;
+  double g_moderee = fmax(fmax(r2, r3), fmax(r5, fmax(r7, r8)));
+  //double g_moderee = fmax(fmax(r2, r3), r5);
+  double g_rapide = fmax(r4, r6);
 
   /* Roue droite */
-  double d_lent = fmax(r1, r5);
-  double d_moderee = r4;
-  double d_rapide = fmax(r2, r3);
+  double d_recul = r9;
+  double d_lent = r1;
+  double d_moderee = fmax(fmax(r3, r4), fmax(r6, fmax(r7, r8)));
+  //double d_moderee = fmax(fmax(r3, r4), r6);
+  double d_rapide = fmax(r2, r5);
 
-  *v_gauche = f_defuzzification(g_lent, g_moderee, g_rapide);
-  *v_droite = f_defuzzification(d_lent, d_moderee, d_rapide);
-}
-
-static void compute_odometry(WbDeviceTag left_position_sensor, WbDeviceTag right_position_sensor) {
-  double l = wb_position_sensor_get_value(left_position_sensor);
-  double r = wb_position_sensor_get_value(right_position_sensor);
-  double dl = l * WHEEL_RADIUS;         // distance covered by left wheel in meter
-  double dr = r * WHEEL_RADIUS;         // distance covered by right wheel in meter
-  double da = (dr - dl) / AXLE_LENGTH;  // delta orientation
-  printf("estimated distance covered by left wheel: %g m.\n", dl);
-  printf("estimated distance covered by right wheel: %g m.\n", dr);
-  printf("estimated change of orientation: %g rad.\n", da);
+  *v_gauche = f_defuzzification(g_recul, g_lent, g_moderee, g_rapide);
+  *v_droite = f_defuzzification(d_recul, d_lent, d_moderee, d_rapide);
 }
 
 int main(int argc, char *argv[]) {
   /* define variables */
   WbDeviceTag distance_sensor[8], left_motor, right_motor, left_position_sensor, right_position_sensor;
-  int i, j;
-  double speed[3];
+  int i;
+  double speed[2];
   double sensors_value[8];
-  double braitenberg_coefficients[8][2] = {{0.942, -0.22}, {0.63, -0.1}, {0.5, -0.06},  {-0.06, -0.06},
-                                           {-0.06, -0.06}, {-0.06, 0.5}, {-0.19, 0.63}, {-0.13, 0.942}};
-  int time_step; 
-  int nb_step=0;
+  int time_step;
+  int nb_step = 0;
   int camera_time_step;
   /* initialize Webots */
   wb_robot_init();
@@ -186,7 +213,7 @@ int main(int argc, char *argv[]) {
   WbDeviceTag camera = wb_robot_get_device("camera");
   wb_camera_enable(camera, camera_time_step);
   WbDeviceTag accelerometer = wb_robot_get_device("accelerometer");
-  wb_accelerometer_enable(accelerometer, time_step); 
+  wb_accelerometer_enable(accelerometer, time_step);
 
   /* get a handler to the motors and set target position to infinity (speed control). */
   left_motor = wb_robot_get_device("left wheel motor");
@@ -210,50 +237,77 @@ int main(int argc, char *argv[]) {
     wb_distance_sensor_enable(distance_sensor[i], time_step);
   }
   
-  /* Affiche la vitesse max du robot*/
+   /* Affiche la vitesse max du robot*/
   double right_max_w = wb_motor_get_max_velocity(right_motor);  // rad/s
   printf("max right wheel speed: %g rad/s -> %g m/s\n", right_max_w, right_max_w * WHEEL_RADIUS);
   double left_max_w = wb_motor_get_max_velocity(left_motor);  // rad/s
   printf("max left wheel speed: %g rad/s -> %g m/s\n", left_max_w, left_max_w * WHEEL_RADIUS);
-  
 
+  int compteur_sans_mur = 0; 
+  const int k = 50;
   /* main loop */
   while (wb_robot_step(time_step) != -1) {
     /* get sensors values */
     for (i = 0; i < 8; i++) {
       sensors_value[i] = wb_distance_sensor_get_value(distance_sensor[i]);
     }
-    double max_capteurs_gauches = f_max_sensors_value(sensors_value, 1, 2);
-    double max_capteurs_droites = f_max_sensors_value(sensors_value, 5, 6);
 
-    /* compute odometry and speed values*/
-    //compute_odometry(left_position_sensor, right_position_sensor);
-
+    /* Entrées frontales*/
+    double d_avant = fmax(sensors_value[1], sensors_value[6]);
     double v_g, v_d;
-    f_moteur_inference(max_capteurs_droites, max_capteurs_gauches, &v_g, &v_d);
-    speed[0] = v_g / WHEEL_RADIUS;   /* m/s -> rad/s */
-    speed[1] = v_d / WHEEL_RADIUS;
-    
-    /*for (i = 0; i < 2; i++) {
-      speed[i] = 0.0;
-      for (j = 0; j < 8; j++) {
-        speed[i] += braitenberg_coefficients[j][i] * (1.0 - (sensors_value[j] / RANGE));
 
-        if()
+    /* Aucun mur détecté autour du robot*/
+    int pas_de_mur_droite = (sensors_value[2] > 50 && sensors_value[2] < 80);
+    int pas_de_mur_gauche = (sensors_value[5] > 50 && sensors_value[5] < 80);
+
+    if(pas_de_mur_droite && pas_de_mur_gauche) {
+      compteur_sans_mur += 1;
+    }else {
+      compteur_sans_mur = 0;
+    }
+
+    double d_cote, diff_avant_arriere;
+    if(MUR_A_DROITE) {
+      d_cote = sensors_value[2];
+      diff_avant_arriere = sensors_value[1] - sensors_value[3];
+    }else {
+      d_cote = sensors_value[5];
+      diff_avant_arriere = sensors_value[6] - sensors_value[4];
+    }
+
+    /* Si le robot tourne en rond depuis k ou plus pas de temps alors avancer tout droit*/
+    if (compteur_sans_mur >= k) {
+      v_g = 0.15;
+      v_d = 0.15;
+    } else {
+      f_moteur_inference(d_avant, d_cote, diff_avant_arriere, &v_g, &v_d);
+
+      if(!MUR_A_DROITE) {
+        /* Mur à gauche = image miroir : on échange les deux roues*/
+        double tmp = v_g;
+        v_g = v_d;
+        v_d = tmp;
       }
-    }*/
-    
-    nb_step+=1;
-    printf("Temps: %d \n", nb_step);
+    }
+
+    speed[0] = v_g / WHEEL_RADIUS; /* m/s -> rad/s */
+    speed[1] = v_d / WHEEL_RADIUS;
+
+    nb_step += 1;
+    if(MUR_A_DROITE) {
+      printf("Temps: %d | ps1=%.0f ps6=%0.f ps3=%.0f cote=%.0f diff_avant_arriere=%.0f | vg=%.3f vd=%.3f m/s\n", nb_step, sensors_value[1], sensors_value[6],
+             sensors_value[3], d_cote, diff_avant_arriere, v_g, v_d);
+    }else {
+      printf("Temps: %d | ps6=%0.f ps1=%.0f ps4=%.0f cote=%.0f diff_avant_arriere=%.0f | vg=%.3f vd=%.3f m/s\n", nb_step, sensors_value[6], sensors_value[1],
+             sensors_value[4], d_cote, diff_avant_arriere, v_g, v_d);
+    }
+
     /* set speed values */
     wb_motor_set_velocity(left_motor, speed[0]);
-    printf("Current left wheel speed: %g rad/s -> %g m/s\n", speed[0], speed[0] * WHEEL_RADIUS);
     wb_motor_set_velocity(right_motor, speed[1]);
-    printf("Current right wheel speed: %g rad/s -> %g m/s\n", speed[1], speed[1] * WHEEL_RADIUS);
   }
 
   wb_robot_cleanup();
 
   return 0;
 }
-
